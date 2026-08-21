@@ -37,7 +37,7 @@ jobs:
 
           mkdir -p out
           
-          make O=out ARCH=${ARCH} HOSTCFLAGS="-fcommon" ${DEFCONFIG}
+          make O=out ARCH=${ARCH} HOSTCFLAGS="-fcommon" HOSTLDFLAGS="-fcommon" ${DEFCONFIG}
 
           ./scripts/config --file out/.config \
             -e CONFIG_KSU \
@@ -51,6 +51,8 @@ jobs:
             CROSS_COMPILE=${CROSS_COMPILE} \
             CROSS_COMPILE_ARM32=${CROSS_COMPILE_ARM32} \
             HOSTCFLAGS="-fcommon" \
+            HOSTLDFLAGS="-fcommon" \
+            KCFLAGS="-Wno-error" \
             LLVM_IAS=0
 
       - name: Package AnyKernel3
