@@ -1,0 +1,73 @@
+name: Build Kernel with KernelSU (msm8937)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout Source Kernel
+        uses: actions/checkout@v4
+
+      - name: Setup KernelSU (backslashxx)
+        run: |
+          curl -LSs "https://raw.githubusercontent.com/backslashxx/KernelSU/master/kernel/setup.sh" | bash -s master
+
+      - name: Install Build Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bc bison build-essential ccache curl flex \
+            libssl-dev lzop libncurses5-dev libelf-dev libfl-dev python2 python3 zip
+
+      - name: Download GCC Toolchains
+        run: |
+          git clone --depth=1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9.git -b lineage-19.1 gcc64
+          git clone --depth=1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_arm_arm-linux-androideabi-4.9.git -b lineage-19.1 gcc32
+
+      - name: Build Kernel Image
+        env:
+          DEFCONFIG: msm8937_defconfig
+          ARCH: arm64
+        run: |
+          export PATH="${GITHUB_WORKSPACE}/gcc64/bin:${GITHUB_WORKSPACE}/gcc32/bin:$PATH"
+          export CROSS_COMPILE=aarch64-linux-android-
+          export CROSS_COMPILE_ARM32=arm-linux-androideabi-
+
+          mkdir -p out
+
+          make O=out ARCH=${ARCH} HOSTCFLAGS="-fcommon" HOSTLDFLAGS="-fcommon" ${DEFCONFIG}
+
+          ./scripts/config --file out/.config \
+            -e CONFIG_KSU \
+            -e CONFIG_KPROBES \
+            -e CONFIG_HAVE_KPROBES \
+            -e CONFIG_KPROBE_EVENTS
+
+          make -j$(nproc --all) O=out ARCH=${ARCH} \
+            CROSS_COMPILE=${CROSS_COMPILE} \
+            CROSS_COMPILE_ARM32=${CROSS_COMPILE_ARM32} \
+            HOSTCFLAGS="-fcommon" \
+            HOSTLDFLAGS="-fcommon"
+
+      - name: Package AnyKernel3
+        run: |
+          git clone https://github.com/osm0sis/AnyKernel3 --depth=1 anykernel
+          if [ -f out/arch/arm64/boot/Image.gz-dtb ]; then
+            cp out/arch/arm64/boot/Image.gz-dtb anykernel/Image.gz-dtb
+          elif [ -f out/arch/arm64/boot/Image.gz ]; then
+            cp out/arch/arm64/boot/Image.gz anykernel/Image.gz
+          elif [ -f out/arch/arm/boot/zImage-dtb ]; then
+            cp out/arch/arm/boot/zImage-dtb anykernel/zImage-dtb
+          fi
+          
+          cd anykernel
+          zip -r9 ../kernel-msm8937-ksu.zip * -x .git README.md *placeholder
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Kernel-MSM8937-KSU
+          path: kernel-msm8937-ksu.zip
+          
